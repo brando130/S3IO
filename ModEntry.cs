@@ -1,11 +1,10 @@
 using System;
 using Sims3.SimIFace;
+using Sims3.Gameplay;
 using Sims3.Gameplay.Utilities;
 
 namespace S3IO
 {
-    public delegate void Action();
-
     public class ModEntry
     {
         [Tunable]
@@ -40,14 +39,14 @@ namespace S3IO
 
     public class FunctionTask : Task
     {
-        private Action mFunction;
+        private Function mFunction;
 
-        public FunctionTask(Action func)
+        public FunctionTask(Function func)
         {
             mFunction = func;
         }
 
-        public static ObjectGuid Perform(Action func)
+        public static ObjectGuid Perform(Function func)
         {
             return new FunctionTask(func).AddToSimulator();
         }
