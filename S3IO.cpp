@@ -95,8 +95,13 @@ volatile byte* FindSharedBuffer() {
 
 // List files or directories helper
 void ListDirectory(const char* path, bool filesOnly, bool dirsOnly, char* responseBuffer, int maxResponseSize, int* outResponseSize) {
-    char searchPath[MAX_PATH];
-    sprintf(searchPath, "%s\\*", path);
+    if (!path || strlen(path) == 0) {
+        *(int*)responseBuffer = 0; // count = 0
+        *outResponseSize = 4;
+        return;
+    }
+    char searchPath[MAX_PATH] = {0};
+    snprintf(searchPath, sizeof(searchPath), "%s\\*", path);
     
     WIN32_FIND_DATAA findData;
     HANDLE hFind = FindFirstFileA(searchPath, &findData);
@@ -173,14 +178,22 @@ DWORD WINAPI IpcThread(LPVOID lpParam) {
             
             switch (cmd) {
                 case CMD_FILE_EXISTS: {
-                    DWORD attr = GetFileAttributesA(payload);
+                    char safePath[MAX_PATH] = {0};
+                    if (payloadSize > 0 && payloadSize < MAX_PATH) {
+                        memcpy(safePath, payload, payloadSize);
+                    }
+                    DWORD attr = GetFileAttributesA(safePath);
                     payload[0] = (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) ? 1 : 0;
                     responseSize = 1;
                     success = true;
                     break;
                 }
                 case CMD_FILE_READ: {
-                    HANDLE hFile = CreateFileA(payload, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                    char safePath[MAX_PATH] = {0};
+                    if (payloadSize > 0 && payloadSize < MAX_PATH) {
+                        memcpy(safePath, payload, payloadSize);
+                    }
+                    HANDLE hFile = CreateFileA(safePath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
                     if (hFile != INVALID_HANDLE_VALUE) {
                         DWORD bytesRead = 0;
                         DWORD fileSize = GetFileSize(hFile, NULL);
@@ -194,12 +207,22 @@ DWORD WINAPI IpcThread(LPVOID lpParam) {
                 }
                 case CMD_FILE_WRITE: {
                     int pathLen = *(int*)payload;
-                    const char* path = payload + 4;
+                    if (pathLen <= 0 || pathLen >= MAX_PATH || pathLen > payloadSize - 4) {
+                        LogDebug("CMD_FILE_WRITE error: invalid pathLen %d (payloadSize %d)", pathLen, payloadSize);
+                        success = false;
+                        responseSize = 0;
+                        break;
+                    }
+                    char safePath[MAX_PATH] = {0};
+                    memcpy(safePath, payload + 4, pathLen);
+                    
                     const char* data = payload + 4 + pathLen;
                     int dataSize = payloadSize - 4 - pathLen;
+                    if (dataSize < 0) dataSize = 0;
                     
                     char parentDir[MAX_PATH] = {0};
-                    strcpy(parentDir, path);
+                    strncpy(parentDir, safePath, MAX_PATH - 1);
+                    parentDir[MAX_PATH - 1] = '\0';
                     char* lastSlash = strrchr(parentDir, '\\');
                     if (!lastSlash) lastSlash = strrchr(parentDir, '/');
                     if (lastSlash) {
@@ -207,25 +230,35 @@ DWORD WINAPI IpcThread(LPVOID lpParam) {
                         SHCreateDirectoryExA(NULL, parentDir, NULL);
                     }
 
-                    HANDLE hFile = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+                    HANDLE hFile = CreateFileA(safePath, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
                     if (hFile != INVALID_HANDLE_VALUE) {
                         DWORD bytesWritten = 0;
                         success = WriteFile(hFile, data, dataSize, &bytesWritten, NULL);
                         CloseHandle(hFile);
                     } else {
-                        LogDebug("CMD_FILE_WRITE failed to open file '%s', error=%lu", path, GetLastError());
+                        LogDebug("CMD_FILE_WRITE failed to open file '%s', error=%lu", safePath, GetLastError());
                     }
                     responseSize = 0;
                     break;
                 }
                 case CMD_FILE_APPEND: {
                     int pathLen = *(int*)payload;
-                    const char* path = payload + 4;
+                    if (pathLen <= 0 || pathLen >= MAX_PATH || pathLen > payloadSize - 4) {
+                        LogDebug("CMD_FILE_APPEND error: invalid pathLen %d (payloadSize %d)", pathLen, payloadSize);
+                        success = false;
+                        responseSize = 0;
+                        break;
+                    }
+                    char safePath[MAX_PATH] = {0};
+                    memcpy(safePath, payload + 4, pathLen);
+                    
                     const char* data = payload + 4 + pathLen;
                     int dataSize = payloadSize - 4 - pathLen;
+                    if (dataSize < 0) dataSize = 0;
                     
                     char parentDir[MAX_PATH] = {0};
-                    strcpy(parentDir, path);
+                    strncpy(parentDir, safePath, MAX_PATH - 1);
+                    parentDir[MAX_PATH - 1] = '\0';
                     char* lastSlash = strrchr(parentDir, '\\');
                     if (!lastSlash) lastSlash = strrchr(parentDir, '/');
                     if (lastSlash) {
@@ -233,60 +266,84 @@ DWORD WINAPI IpcThread(LPVOID lpParam) {
                         SHCreateDirectoryExA(NULL, parentDir, NULL);
                     }
 
-                    HANDLE hFile = CreateFileA(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+                    HANDLE hFile = CreateFileA(safePath, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
                     if (hFile != INVALID_HANDLE_VALUE) {
                         SetFilePointer(hFile, 0, NULL, FILE_END);
                         DWORD bytesWritten = 0;
                         success = WriteFile(hFile, data, dataSize, &bytesWritten, NULL);
                         CloseHandle(hFile);
                     } else {
-                        LogDebug("CMD_FILE_APPEND failed to open file '%s', error=%lu", path, GetLastError());
+                        LogDebug("CMD_FILE_APPEND failed to open file '%s', error=%lu", safePath, GetLastError());
                     }
                     responseSize = 0;
                     break;
                 }
                 case CMD_FILE_DELETE: {
-                    success = DeleteFileA(payload);
+                    char safePath[MAX_PATH] = {0};
+                    if (payloadSize > 0 && payloadSize < MAX_PATH) {
+                        memcpy(safePath, payload, payloadSize);
+                    }
+                    success = DeleteFileA(safePath);
                     responseSize = 0;
                     break;
                 }
                 case CMD_DIR_EXISTS: {
-                    DWORD attr = GetFileAttributesA(payload);
+                    char safePath[MAX_PATH] = {0};
+                    if (payloadSize > 0 && payloadSize < MAX_PATH) {
+                        memcpy(safePath, payload, payloadSize);
+                    }
+                    DWORD attr = GetFileAttributesA(safePath);
                     payload[0] = (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) ? 1 : 0;
                     responseSize = 1;
                     success = true;
                     break;
                 }
                 case CMD_DIR_CREATE: {
-                    success = CreateDirectoryA(payload, NULL);
+                    char safePath[MAX_PATH] = {0};
+                    if (payloadSize > 0 && payloadSize < MAX_PATH) {
+                        memcpy(safePath, payload, payloadSize);
+                    }
+                    success = CreateDirectoryA(safePath, NULL);
                     responseSize = 0;
                     break;
                 }
                 case CMD_DIR_DELETE: {
                     bool recursive = payload[0] != 0;
-                    const char* path = payload + 1;
+                    char safePath[MAX_PATH] = {0};
+                    if (payloadSize > 1 && payloadSize - 1 < MAX_PATH) {
+                        memcpy(safePath, payload + 1, payloadSize - 1);
+                    }
                     
                     if (recursive) {
                         SHFILEOPSTRUCTA fileOp = {0};
                         fileOp.wFunc = FO_DELETE;
                         char doubleNullPath[MAX_PATH + 2] = {0};
-                        strcpy(doubleNullPath, path);
+                        strncpy(doubleNullPath, safePath, MAX_PATH - 1);
+                        doubleNullPath[MAX_PATH - 1] = '\0';
                         fileOp.pFrom = doubleNullPath;
                         fileOp.fFlags = FOF_NO_UI;
                         success = (SHFileOperationA(&fileOp) == 0);
                     } else {
-                        success = RemoveDirectoryA(path);
+                        success = RemoveDirectoryA(safePath);
                     }
                     responseSize = 0;
                     break;
                 }
                 case CMD_DIR_LISTFILES: {
-                    ListDirectory(payload, true, false, payload, BUFFER_SIZE - PAYLOAD_OFFSET, &responseSize);
+                    char safePath[MAX_PATH] = {0};
+                    if (payloadSize > 0 && payloadSize < MAX_PATH) {
+                        memcpy(safePath, payload, payloadSize);
+                    }
+                    ListDirectory(safePath, true, false, payload, BUFFER_SIZE - PAYLOAD_OFFSET, &responseSize);
                     success = true;
                     break;
                 }
                 case CMD_DIR_LISTDIRS: {
-                    ListDirectory(payload, false, true, payload, BUFFER_SIZE - PAYLOAD_OFFSET, &responseSize);
+                    char safePath[MAX_PATH] = {0};
+                    if (payloadSize > 0 && payloadSize < MAX_PATH) {
+                        memcpy(safePath, payload, payloadSize);
+                    }
+                    ListDirectory(safePath, false, true, payload, BUFFER_SIZE - PAYLOAD_OFFSET, &responseSize);
                     success = true;
                     break;
                 }

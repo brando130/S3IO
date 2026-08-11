@@ -7,7 +7,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 
 $S3IO_DIR = "C:\Users\B\modding\S3IO"
 $S3PI_DLL_DIR = "C:\Users\B\modding\sims3-package-interface\S3PI-Library-DLLs"
-$NRAAS_COMPILER_DIR = "C:\Users\B\modding\NRaas-master\Sims3\Compiler"
+$NRAAS_COMPILER_DIR = "C:\Users\B\modding\NRaas\Sims3\Compiler"
 $GAME_BIN_DIR = "C:\Games\The Sims 3 - Complete Edition\The Sims 3\Game\Bin"
 $USER_MODS_DIR = "C:\Users\B\Documents\Electronic Arts\The Sims 3\Mods\Packages"
 $CACHE_FILE = "C:\Users\B\Documents\Electronic Arts\The Sims 3\scriptCache.package"

@@ -12,6 +12,7 @@ namespace S3IO
         private static IntPtr mBuffer = IntPtr.Zero;
         private static readonly object sIpcLock = new object();
         private static unsafe byte* mBufferPtr = null;
+        private static bool sIpcBusy = false;
 
         // Command codes matching C++ (Pure File I/O Only)
         private enum Command : ushort
@@ -101,7 +102,18 @@ namespace S3IO
 
         private static unsafe bool SendCommand(Command cmd, byte[] payload)
         {
-            lock (sIpcLock)
+            // Cooperative exclusion: all simulator tasks run on one OS thread
+            // via cooperative scheduling. A simple flag prevents concurrent
+            // SendCommand calls without OS-level locking. Unlike lock{}, this
+            // won't deadlock when we yield via Simulator.Sleep().
+            while (sIpcBusy)
+            {
+                if (!Simulator.CheckYieldingContext(false)) return false;
+                Simulator.Sleep(0);
+            }
+            sIpcBusy = true;
+
+            try
             {
                 if (!IsConnected)
                 {
@@ -109,6 +121,7 @@ namespace S3IO
                     int retries = 0;
                     while (!IsConnected && retries < 50)
                     {
+                        if (!Simulator.CheckYieldingContext(false)) return false;
                         Simulator.Sleep(10);
                         retries++;
                     }
@@ -128,12 +141,25 @@ namespace S3IO
 
                 mBufferPtr[8] = STATUS_READY;
 
+                // Wait for C++ to process. The native thread responds in < 5ms
+                // typically. Yield cooperatively if in a yielding context;
+                // otherwise spin-wait with a safety bailout.
+                int waitCount = 0;
                 while (ReadStatus() == STATUS_READY || ReadStatus() == STATUS_CPP_PROCESSING)
                 {
-                    Simulator.Sleep(10);
+                    if (Simulator.CheckYieldingContext(false))
+                    {
+                        Simulator.Sleep(0);
+                    }
+                    waitCount++;
+                    if (waitCount > 1000000) return false;
                 }
 
                 return ReadStatus() == STATUS_DONE;
+            }
+            finally
+            {
+                sIpcBusy = false;
             }
         }
 
@@ -267,7 +293,7 @@ namespace S3IO
 
             public static unsafe List<string> GetFiles(string path)
             {
-                if (string.IsNullOrEmpty(path)) return null;
+                if (string.IsNullOrEmpty(path)) return new List<string>();
                 if (SendCommand(Command.Dir_ListFiles, EncodeString(path)))
                 {
                     int offset = 15;
@@ -275,22 +301,26 @@ namespace S3IO
                     offset += 4;
 
                     List<string> list = new List<string>();
+                    if (count <= 0 || count > 10000) return list;
+
                     for (int i = 0; i < count; i++)
                     {
+                        if (offset + 4 > 16777216) break;
                         int len = *(int*)(mBufferPtr + offset);
                         offset += 4;
+                        if (len < 0 || len > 4096 || offset + len > 16777216) break;
                         string file = DecodeString(mBufferPtr + offset, len);
                         list.Add(file);
                         offset += len;
                     }
                     return list;
                 }
-                return null;
+                return new List<string>();
             }
 
             public static unsafe List<string> GetDirectories(string path)
             {
-                if (string.IsNullOrEmpty(path)) return null;
+                if (string.IsNullOrEmpty(path)) return new List<string>();
                 if (SendCommand(Command.Dir_ListDirs, EncodeString(path)))
                 {
                     int offset = 15;
@@ -298,17 +328,21 @@ namespace S3IO
                     offset += 4;
 
                     List<string> list = new List<string>();
+                    if (count <= 0 || count > 10000) return list;
+
                     for (int i = 0; i < count; i++)
                     {
+                        if (offset + 4 > 16777216) break;
                         int len = *(int*)(mBufferPtr + offset);
                         offset += 4;
+                        if (len < 0 || len > 4096 || offset + len > 16777216) break;
                         string dir = DecodeString(mBufferPtr + offset, len);
                         list.Add(dir);
                         offset += len;
                     }
                     return list;
                 }
-                return null;
+                return new List<string>();
             }
         }
 

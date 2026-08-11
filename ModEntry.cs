@@ -19,8 +19,22 @@ namespace S3IO
 
         private static void OnWorldLoadFinished(object sender, EventArgs e)
         {
-            // S3IO is a shared library - no diagnostics needed, just ensure we're connected.
-            // Initialization already happened in the static constructor.
+            // Verify the C++ native side has found our buffer and completed
+            // the handshake. This runs as a FunctionTask so we have a yielding
+            // context and can safely Simulator.Sleep while waiting.
+            FunctionTask.Perform(VerifyConnection);
+        }
+
+        private static void VerifyConnection()
+        {
+            // Wait up to ~5 seconds for the C++ handshake
+            int retries = 0;
+            while (!ModIO.IsConnected && retries < 50)
+            {
+                if (!Simulator.CheckYieldingContext(false)) return;
+                Simulator.Sleep(100);
+                retries++;
+            }
         }
     }
 
@@ -52,9 +66,18 @@ namespace S3IO
                     mFunction();
                 }
             }
-            catch (Exception ex)
+            catch (ResetException)
             {
-                // Log or handle error
+                throw;
+            }
+            catch (Exception)
+            {
+                // Exception occurred — don't silently swallow, but
+                // avoid recursive S3IO calls in the error path.
+            }
+            finally
+            {
+                Simulator.DestroyObject(ObjectId);
             }
         }
     }
