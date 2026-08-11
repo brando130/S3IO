@@ -1,0 +1,14 @@
+# Build Output & Binaries
+*.obj
+*.lib
+*.exp
+*.dll
+*.asi
+*.exe
+*.package
+*.log
+
+# Temp files
+*.tmp
+TestS3IO.exe
+s3io_test_output.txt
