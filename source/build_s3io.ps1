@@ -1,18 +1,29 @@
 # S3IO Automated Build, Packaging, and Deployment Script
+#
+# Before running, set these paths to match your system:
+#   $S3IO_DIR        - This repo's root (where source/ and mod/ live)
+#   $S3PI_DLL_DIR    - S3PI library DLLs (s3pi.Interfaces.dll, s3pi.Package.dll, etc.)
+#   $GAME_REFS_DIR   - Sims 3 reference DLLs extracted from the game (mscorlib, SimIFace, etc.)
+#   $GAME_BIN_DIR    - Your Sims 3 Game\Bin directory (where .asi files go)
+#   $USER_MODS_DIR   - Your Sims 3 Mods\Packages directory (where .package files go)
+#
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "    Building S3IO Framework" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-$S3IO_DIR = "C:\Users\B\modding\S3IO"
-$S3PI_DLL_DIR = "C:\Users\B\modding\sims3-package-interface\S3PI-Library-DLLs"
-$NRAAS_COMPILER_DIR = "C:\Users\B\modding\NRaas\Sims3\Compiler"
-$GAME_BIN_DIR = "C:\Games\The Sims 3 - Complete Edition\The Sims 3\Game\Bin"
-$USER_MODS_DIR = "C:\Users\B\Documents\Electronic Arts\The Sims 3\Mods\Packages"
-$CACHE_FILE = "C:\Users\B\Documents\Electronic Arts\The Sims 3\scriptCache.package"
+# ---- CONFIGURE THESE PATHS ----
+$S3IO_DIR           = "C:\path\to\S3IO"
+$S3PI_DLL_DIR       = "C:\path\to\S3PI-Library-DLLs"
+$GAME_REFS_DIR = "C:\path\to\NRaas\Sims3\Compiler"
+$GAME_BIN_DIR       = "C:\path\to\The Sims 3\Game\Bin"
+$USER_MODS_DIR      = "$env:USERPROFILE\Documents\Electronic Arts\The Sims 3\Mods\Packages"
+$CACHE_FILE         = "$env:USERPROFILE\Documents\Electronic Arts\The Sims 3\scriptCache.package"
+# --------------------------------
 
-Set-Location $S3IO_DIR
+$SOURCE_DIR = "$S3IO_DIR\source"
+Set-Location $SOURCE_DIR
 
 # Step 1: Compile Packager.exe
 Write-Host "`n[1/5] Compiling Packager.exe..." -ForegroundColor Yellow
@@ -30,26 +41,26 @@ Write-Host "Packager.exe compiled successfully." -ForegroundColor Green
 Write-Host "`n[2/5] Compiling S3IO.dll (C# Gameplay Assembly)..." -ForegroundColor Yellow
 & "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe" `
   /noconfig /unsafe /target:library /nostdlib `
-  /r:"$NRAAS_COMPILER_DIR\0x28EE9D383A73463E_mscorlib.dll" `
-  /r:"$NRAAS_COMPILER_DIR\0x342EE04373CF1E1C_System.dll" `
-  /r:"$NRAAS_COMPILER_DIR\0x78CF6CF5304D0C4F_ScriptCore.dll" `
-  /r:"$NRAAS_COMPILER_DIR\0xC356DF69B70ADD42_SimIFace.dll" `
-  /r:"$NRAAS_COMPILER_DIR\0xB9C90FDC6793BC0A_Sims3GameplayObjects.dll" `
-  /r:"$NRAAS_COMPILER_DIR\0x03D6C8D903CE868C_Sims3GameplaySystems.dll" `
-  /out:"$S3IO_DIR\S3IO.dll" `
+  /r:"$GAME_REFS_DIR\0x28EE9D383A73463E_mscorlib.dll" `
+  /r:"$GAME_REFS_DIR\0x342EE04373CF1E1C_System.dll" `
+  /r:"$GAME_REFS_DIR\0x78CF6CF5304D0C4F_ScriptCore.dll" `
+  /r:"$GAME_REFS_DIR\0xC356DF69B70ADD42_SimIFace.dll" `
+  /r:"$GAME_REFS_DIR\0xB9C90FDC6793BC0A_Sims3GameplayObjects.dll" `
+  /r:"$GAME_REFS_DIR\0x03D6C8D903CE868C_Sims3GameplaySystems.dll" `
+  /out:"$S3IO_DIR\mod\S3IO.dll" `
   AssemblyInfo.cs ModEntry.cs S3IO.cs
 if ($LASTEXITCODE -ne 0) { throw "S3IO.dll compilation failed." }
 Write-Host "S3IO.dll compiled successfully." -ForegroundColor Green
 
 # Step 3: Compile S3IO.asi (Native 32-bit x86 Plugin)
 Write-Host "`n[3/5] Compiling S3IO.asi (Native C++ ASI Plugin)..." -ForegroundColor Yellow
-cmd /c 'call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars32.bat" && cl /O2 /LD /Fe:S3IO.asi S3IO.cpp user32.lib shell32.lib'
+cmd /c "call ""C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars32.bat"" && cl /O2 /LD /Fe:""$S3IO_DIR\mod\S3IO.asi"" S3IO.cpp user32.lib shell32.lib"
 if ($LASTEXITCODE -ne 0) { throw "S3IO.asi compilation failed." }
 Write-Host "S3IO.asi compiled successfully." -ForegroundColor Green
 
 # Step 4: Package into S3IO.package
 Write-Host "`n[4/5] Packaging S3IO.package..." -ForegroundColor Yellow
-& "$S3PI_DLL_DIR\Packager.exe" "$S3IO_DIR\S3IO.package" "$S3IO_DIR\S3IO.dll" "$S3IO_DIR\S3IO.ModEntry.xml" "S3IO" "S3IO.ModEntry"
+& "$S3PI_DLL_DIR\Packager.exe" "$S3IO_DIR\mod\S3IO.package" "$S3IO_DIR\mod\S3IO.dll" "$SOURCE_DIR\S3IO.ModEntry.xml" "S3IO" "S3IO.ModEntry"
 if ($LASTEXITCODE -ne 0) { throw "Packaging failed." }
 Write-Host "S3IO.package generated successfully." -ForegroundColor Green
 
@@ -60,10 +71,10 @@ if (-not (Test-Path $USER_MODS_DIR)) {
     New-Item -ItemType Directory -Path $USER_MODS_DIR -Force | Out-Null
 }
 
-Copy-Item -Path "$S3IO_DIR\S3IO.asi" -Destination "$GAME_BIN_DIR\S3IO.asi" -Force
+Copy-Item -Path "$S3IO_DIR\mod\S3IO.asi" -Destination "$GAME_BIN_DIR\S3IO.asi" -Force
 Write-Host "Deployed S3IO.asi -> $GAME_BIN_DIR\S3IO.asi" -ForegroundColor Green
 
-Copy-Item -Path "$S3IO_DIR\S3IO.package" -Destination "$USER_MODS_DIR\S3IO.package" -Force
+Copy-Item -Path "$S3IO_DIR\mod\S3IO.package" -Destination "$USER_MODS_DIR\S3IO.package" -Force
 Write-Host "Deployed S3IO.package -> $USER_MODS_DIR\S3IO.package" -ForegroundColor Green
 
 if (Test-Path $CACHE_FILE) {

@@ -138,8 +138,20 @@ string docs = ModIO.System.GetDocumentsPath();
 
 ## Build From Source (Optional)
 
+Open `source\build_s3io.ps1` and set the paths at the top of the file to match your system:
+
+| Variable | What it points to |
+|---|---|
+| `$S3IO_DIR` | This repo's root (where `source/` and `mod/` live) |
+| `$S3PI_DLL_DIR` | [S3PI](https://sourceforge.net/projects/sims3tools/) library DLLs (`s3pi.Interfaces.dll`, `s3pi.Package.dll`, etc.) |
+| `$GAME_REFS_DIR` | Sims 3 reference DLLs extracted from the game (`mscorlib.dll`, `SimIFace.dll`, `ScriptCore.dll`, etc.) |
+| `$GAME_BIN_DIR` | Your Sims 3 `Game\Bin` directory |
+| `$USER_MODS_DIR` | Your Sims 3 `Mods\Packages` directory |
+
+Then run:
+
 ```powershell
-.\build_s3io.ps1
+.\source\build_s3io.ps1
 ```
 
-Compiles the C# mod, C++ ASI plugin, packages into `S3IO.package`, deploys to the game directories, and clears the script cache.
+This compiles the C# mod and C++ ASI plugin, packages into `S3IO.package`, deploys to the game directories, and clears the script cache. Requires the .NET Framework 4.x C# compiler (`csc.exe`) and MSVC Build Tools for the native side.
