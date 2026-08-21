@@ -57,6 +57,8 @@ S3IO initializes itself — just call `ModIO.File.*`, `ModIO.Directory.*`, or `M
 
 **Important**: Do not copy S3IO's ModIO or FunctionTask classes into your own mod. Reference S3IO.dll as a shared dependency. Copying them creates a second IPC buffer that the native side can't reliably distinguish from the real one.
 
+## API Reference
+
 ### ModIO.File
 
 ```csharp
