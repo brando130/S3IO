@@ -3,6 +3,7 @@
 *.lib
 *.exp
 *.dll
+!ddraw.dll
 *.asi
 *.exe
 *.package
