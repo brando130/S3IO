@@ -155,3 +155,11 @@ Then run:
 ```
 
 This compiles the C# mod and C++ ASI plugin, packages into `S3IO.package`, deploys to the game directories, and clears the script cache. Requires the .NET Framework 4.x C# compiler (`csc.exe`) and MSVC Build Tools for the native side.
+
+## Credits
+
+Battery `S3SE`
+
+Twallan `NRaas`
+
+Peter Jones `S3PI`
