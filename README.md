@@ -1,10 +1,16 @@
 # S3IO
 
-Native I/O bridge for The Sims 3. Bypasses the game's stripped .NET 2.0 Mono sandbox to provide file and directory operations to script mods.
+Native I/O bridge for The Sims 3. Provides file and directory operations to script mods.
 
 ## Why S3IO?
 
-The Sims 3 executes script mods inside a heavily sandboxed Mono runtime where `System.IO` and `System.Net` are disabled. Previous community solutions to this problem relied on fixed timing delays to synchronize a native component with the game process — the native side would wait a hardcoded number of milliseconds (e.g. 30 seconds) before attempting to locate the managed side's data in memory. This worked on the hardware of the era, but modern CPUs (Intel Alder Lake and newer hybrid architectures, fast NVMe storage, etc.) change the game's startup timing enough that the fixed delay either fires too early (crash) or too late (timeout). Users are forced to hand-tune millisecond values by trial and error, and what works on one machine breaks on another.
+### TL;DR
+
+The Sims 3 runtime is sandboxed and does not include `System.IO`. Previous community solutions relied on a "delay_ms" parameter that often requires fine tuning per machine. 
+
+### In more detail...
+
+The Sims 3 executes script mods inside a heavily sandboxed Mono runtime where `System.IO` and `System.Net` are disabled. Previous community solutions to this problem relied on fixed timing delays to synchronize a native component with the game process. This worked on the hardware of the era, but modern CPUs (Intel Alder Lake and newer hybrid architectures, fast NVMe storage, etc.) change the game's startup timing enough that the fixed delay either fires too early (crash) or too late (timeout). Users are forced to hand-tune millisecond values by trial and error, and what works on one machine breaks on another.
 
 S3IO eliminates timing dependence entirely. Instead of waiting a fixed delay, the native side continuously scans for a known signature (`S3IO_IPC`) that the managed side writes to a shared memory buffer. It doesn't matter whether the game loads in 10 seconds or 60 — the handshake completes whenever both sides are ready. No configuration file, no delay tuning, no per-machine adjustment.
 
@@ -14,8 +20,8 @@ S3IO is also fully self-contained (one `.package` + one `.asi`, no external proc
 
 Two components:
 
-- **C# mod (`S3IO.dll` / `S3IO.package`)** — allocates a 16 MB shared memory buffer using `Marshal.AllocHGlobal` and writes an `S3IO_IPC` signature header. Exposes `ModIO.File.*`, `ModIO.Directory.*`, and `ModIO.System.*` to other mods. Yields cooperatively via `Simulator.Sleep` while waiting for the native side.
-- **C++ ASI plugin (`S3IO.asi`)** — loaded into the game process via an ASI loader (`ddraw.dll`). Scans process memory for the `S3IO_IPC` signature, then monitors the shared buffer for commands and executes them using Win32 APIs.
+- **Managed C# (`S3IO.dll` / `S3IO.package`)** — allocates a 16 MB shared memory buffer using `Marshal.AllocHGlobal` and writes an `S3IO_IPC` signature header. Exposes `ModIO.File.*`, `ModIO.Directory.*`, and `ModIO.System.*` to other mods. Yields cooperatively via `Simulator.Sleep` while waiting for the native side.
+- **Native C++ (`S3IO.asi`)** — loaded into the game process via an ASI loader (`ddraw.dll`). Scans process memory for the `S3IO_IPC` signature, then monitors the shared buffer for commands and executes them using Win32 APIs.
 
 Communication uses a status-byte state machine with cooperative yielding on the managed side and a polling loop on the native side. No OS-level locks are held across yields.
 
@@ -33,19 +39,23 @@ Communication uses a status-byte state machine with cooperative yielding on the 
 3. Delete `scriptCache.package` from your Sims 3 user directory if it exists.
 4. Launch the game. S3IO initializes automatically — no configuration needed.
 
-### Using S3IO in Your Mod
+### Add S3IO as a compile-time reference and you're good to go:
 
-Reference `S3IO.dll` at compile time. Do **not** bundle your own copy of `ModIO` or `FunctionTask` — use S3IO as a shared dependency.
 
+```/r:"path\to\S3IO.dll"```
 ```
-/r:"path\to\S3IO.dll"
+using S3IO;
+
+// Read a file
+string text = ModIO.File.ReadAllText(@"C:\path\to\file.txt");
+
+// Write a file
+ModIO.File.WriteAllText(@"C:\path\to\file.txt", "Hello world");
 ```
 
-Add `using S3IO;` to your source files, then call `ModIO.File.*`, `ModIO.Directory.*`, or `ModIO.System.*`. Initialization is handled by S3IO's own static constructor — do not call `ModIO.Initialize()` from your mod.
+S3IO initializes itself — just call `ModIO.File.*`, `ModIO.Directory.*`, or `ModIO.System.*` and it handles the rest.
 
-## API Reference
-
-All methods yield cooperatively when called from a yielding context (inside `Task.Simulate()`, `Interaction.Run()`, or a `FunctionTask` delegate). They are safe to call from any simulator context — non-yielding contexts use a spin-wait fallback.
+**Important**: Do not copy S3IO's ModIO or FunctionTask classes into your own mod. Reference S3IO.dll as a shared dependency. Copying them creates a second IPC buffer that the native side can't reliably distinguish from the real one.
 
 ### ModIO.File
 
