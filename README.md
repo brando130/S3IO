@@ -4,7 +4,13 @@ Native I/O bridge for The Sims 3. Provides file and directory operations to scri
 
 ## Why S3IO?
 
-The Sims 3 runtime is sandboxed — `System.IO` and `System.Net` are disabled. Previous community solutions bridged this gap using fixed timing delays (`delay_ms`) to synchronize a native component with the game process. This worked on the hardware of the era, but modern CPUs (Intel Alder Lake and newer hybrid architectures, fast NVMe storage, etc.) change the game's startup timing enough that the fixed delay either fires too early (crash) or too late (timeout). Users are forced to hand-tune millisecond values by trial and error, and what works on one machine breaks on another.
+### TL;DR
+
+The Sims 3 runtime is sandboxed and does not include `System.IO`. Previous community solutions relied on a `delay_ms` parameter that often requires fine tuning per machine. S3IO eliminates that — no configuration, no delay tuning. Just install and go.
+
+### In more detail...
+
+Previous community solutions bridged the sandbox gap using fixed timing delays to synchronize a native component with the game process. This worked on the hardware of the era, but modern CPUs (Intel Alder Lake and newer hybrid architectures, fast NVMe storage, etc.) change the game's startup timing enough that the fixed delay either fires too early (crash) or too late (timeout). Users are forced to hand-tune millisecond values by trial and error, and what works on one machine breaks on another.
 
 S3IO eliminates timing dependence entirely. Instead of waiting a fixed delay, the native side continuously scans for a known signature (`S3IO_IPC`) that the managed side writes to a shared memory buffer. It doesn't matter whether the game loads in 10 seconds or 60 — the handshake completes whenever both sides are ready. No configuration file, no delay tuning, no per-machine adjustment. Fully self-contained (one `.package` + one `.asi`, no external processes) and supports binary data, not just text.
 
